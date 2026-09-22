@@ -1,0 +1,19 @@
+# build output
+dist/
+js/dist/
+crates/lnn/target/
+node_modules/
+bench/results/
+
+# generated fixtures and demo payloads
+js/test/fixtures.json
+examples/digits/*.wasm
+examples/digits/*.lnn
+examples/digits/index.js
+examples/digits/detect.js
+examples/digits/format.js
+
+# python
+__pycache__/
+*.egg-info/
+.venv/

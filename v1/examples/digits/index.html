@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lnn — draw a digit</title>
+<!-- An empty icon: without it every load costs a 404 for /favicon.ico. -->
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #ffffff; --fg: #16181d; --muted: #6b7280; --line: #e5e7eb;
+    --accent: #2563eb; --bar: #dbeafe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1115; --fg: #e8eaed; --muted: #9aa1ab; --line: #272b33;
+      --accent: #60a5fa; --bar: #1e3a5f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 24px 16px 48px;
+  }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  p.sub { color: var(--muted); margin: 0 0 24px; }
+  .row { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  canvas {
+    border: 1px solid var(--line); border-radius: 10px; touch-action: none;
+    background: #000; cursor: crosshair;
+  }
+  .panel { flex: 1 1 260px; min-width: 260px; }
+  .bars { display: grid; grid-template-columns: 1.2rem 1fr 3.2rem; gap: 4px 8px; align-items: center; }
+  .bars b { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .track { background: var(--line); border-radius: 4px; height: 10px; overflow: hidden; }
+  .fill { background: var(--accent); height: 100%; width: 0; transition: width .12s ease-out; }
+  .bars span { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; font-size: 13px; }
+  .top { font-size: 15px; }
+  button {
+    font: inherit; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line);
+    background: transparent; color: var(--fg); cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 20px 0 0;
+       font-size: 13px; color: var(--muted); }
+  dt { color: var(--muted); }
+  dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .err { color: #dc2626; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Draw a digit</h1>
+  <p class="sub">Classified in your browser by an int8 network. No server, no upload, no dependencies.</p>
+
+  <div class="row">
+    <div>
+      <canvas id="pad" width="224" height="224"></canvas>
+      <div style="margin-top:10px; display:flex; gap:8px;">
+        <button id="clear">Clear</button>
+        <canvas id="thumb" width="8" height="8"
+                style="image-rendering: pixelated; width:44px; height:44px;"
+                title="what the model sees: 8x8"></canvas>
+      </div>
+    </div>
+
+    <div class="panel">
+      <p class="top" id="top">Draw with the mouse or a finger.</p>
+      <div class="bars" id="bars"></div>
+      <dl>
+        <dt>runtime</dt><dd id="isa">loading…</dd>
+        <dt>inference</dt><dd id="ms">–</dd>
+        <dt>model</dt><dd id="size">–</dd>
+        <dt>memory</dt><dd id="mem">–</dd>
+      </dl>
+      <p id="error" class="err"></p>
+    </div>
+  </div>
+</main>
+
+<script type="module">
+import { Model, detectFeatures } from './index.js';
+
+const pad = document.getElementById('pad');
+const ctx = pad.getContext('2d', { willReadFrequently: true });
+const thumb = document.getElementById('thumb');
+const tctx = thumb.getContext('2d');
+const barsEl = document.getElementById('bars');
+
+const bars = [];
+for (let d = 0; d < 10; d++) {
+  const label = document.createElement('b');
+  label.textContent = d;
+  const track = document.createElement('div');
+  track.className = 'track';
+  const fill = document.createElement('div');
+  fill.className = 'fill';
+  track.appendChild(fill);
+  const pct = document.createElement('span');
+  pct.textContent = '0%';
+  barsEl.append(label, track, pct);
+  bars.push({ fill, pct });
+}
+
+function clear() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, pad.width, pad.height);
+  tctx.fillStyle = '#000';
+  tctx.fillRect(0, 0, 8, 8);
+  for (const b of bars) { b.fill.style.width = '0'; b.pct.textContent = '0%'; }
+  document.getElementById('top').textContent = 'Draw with the mouse or a finger.';
+}
+clear();
+
+ctx.lineCap = ctx.lineJoin = 'round';
+ctx.strokeStyle = '#fff';
+ctx.lineWidth = 18;
+
+let drawing = false;
+let last = null;
+const point = (e) => {
+  const r = pad.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * pad.width / r.width, y: (e.clientY - r.top) * pad.height / r.height };
+};
+pad.addEventListener('pointerdown', (e) => { drawing = true; last = point(e); pad.setPointerCapture(e.pointerId); });
+pad.addEventListener('pointermove', (e) => {
+  if (!drawing) return;
+  const p = point(e);
+  ctx.beginPath();
+  ctx.moveTo(last.x, last.y);
+  ctx.lineTo(p.x, p.y);
+  ctx.stroke();
+  last = p;
+  classify();
+});
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) {
+  pad.addEventListener(ev, () => { drawing = false; });
+}
+document.getElementById('clear').addEventListener('click', clear);
+
+/**
+ * Reproduce the pipeline that made the training data, not an approximation
+ * of it. scikit-learn's digits come from NIST 32x32 *bitmaps* reduced by
+ * counting the ink pixels in each 4x4 block, giving 0..16 per cell; the
+ * glyphs are centred and scaled to fill the frame.
+ *
+ * Averaging grey levels instead — the obvious thing — produces blobby,
+ * saturated features the model never saw in training, and it misclassifies
+ * confidently. That is doc 17.2's first checklist item ("input
+ * preprocessing identical to training?") and it is worth more than any
+ * amount of kernel tuning.
+ */
+function features() {
+  const { data, width, height } = ctx.getImageData(0, 0, pad.width, pad.height);
+  const lum = (x, y) => data[(y * width + x) * 4];
+
+  let x0 = width, y0 = height, x1 = -1, y1 = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (lum(x, y) > 32) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  const out = new Float32Array(64);
+  if (x1 < 0) {
+    tctx.fillStyle = '#000';
+    tctx.fillRect(0, 0, 8, 8);
+    return out;
+  }
+
+  // Square the ink's bounding box so the aspect ratio survives, and map it
+  // onto the middle 28x28 of a 32x32 bitmap.
+  const side = Math.max(x1 - x0 + 1, y1 - y0 + 1);
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  const inner = 28;
+  const scale = side / inner;              // source pixels per bitmap pixel
+  const originX = cx - 16 * scale;         // 32 / 2
+  const originY = cy - 16 * scale;
+
+  // 32x32, binarized: a bitmap pixel is ink or it is not.
+  const bitmap = new Uint8Array(32 * 32);
+  for (let by = 0; by < 32; by++) {
+    for (let bx = 0; bx < 32; bx++) {
+      const sx = Math.round(originX + (bx + 0.5) * scale);
+      const sy = Math.round(originY + (by + 0.5) * scale);
+      if (sx < 0 || sy < 0 || sx >= width || sy >= height) continue;
+      bitmap[by * 32 + bx] = lum(sx, sy) > 100 ? 1 : 0;
+    }
+  }
+
+  // 4x4 block counts -> 0..16, then /16 as the training features are.
+  for (let gy = 0; gy < 8; gy++) {
+    for (let gx = 0; gx < 8; gx++) {
+      let count = 0;
+      for (let y = 0; y < 4; y++) {
+        for (let x = 0; x < 4; x++) {
+          count += bitmap[(gy * 4 + y) * 32 + gx * 4 + x];
+        }
+      }
+      out[gy * 8 + gx] = count / 16;
+    }
+  }
+
+  const img = tctx.createImageData(8, 8);
+  for (let i = 0; i < 64; i++) {
+    const v = Math.round(out[i] * 255);
+    img.data.set([v, v, v, 255], i * 4);
+  }
+  tctx.putImageData(img, 0, 0);
+  return out;
+}
+
+let model = null;
+try {
+  model = await Model.load('./digits.lnn', { cache: true });
+  const f = detectFeatures();
+  document.getElementById('isa').textContent =
+    `${model.isa}${f.relaxed && model.isa !== 'relaxed' ? ' (relaxed available, model is 8-bit)' : ''}`;
+  const res = await fetch('./digits.lnn', { method: 'HEAD' });
+  const len = Number(res.headers.get('content-length') || 0);
+  document.getElementById('size').textContent =
+    `${model.info.nodes} nodes${len ? `, ${(len / 1024).toFixed(1)} KiB` : ''}`;
+  document.getElementById('mem').textContent = `${(model.memoryBytes / 1024).toFixed(0)} KiB`;
+} catch (e) {
+  document.getElementById('error').textContent = String(e.message ?? e);
+  document.getElementById('isa').textContent = 'failed to load';
+}
+
+let pending = false;
+function classify() {
+  if (!model || pending) return;
+  pending = true;
+  requestAnimationFrame(() => {
+    pending = false;
+    const [out, stats] = model.runWithStats({ X: features() });
+    const p = Object.values(out)[0];
+    let best = 0;
+    for (let i = 1; i < p.length; i++) if (p[i] > p[best]) best = i;
+    for (let d = 0; d < 10; d++) {
+      bars[d].fill.style.width = `${(p[d] * 100).toFixed(1)}%`;
+      bars[d].pct.textContent = `${(p[d] * 100).toFixed(0)}%`;
+    }
+    document.getElementById('top').innerHTML =
+      `That looks like a <strong>${best}</strong> (${(p[best] * 100).toFixed(0)}% confident)`;
+    document.getElementById('ms').textContent = `${stats.latencyMs.toFixed(3)} ms`;
+  });
+}
+</script>
+</body>
+</html>

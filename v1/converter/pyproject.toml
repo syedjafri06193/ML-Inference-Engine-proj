@@ -1,0 +1,16 @@
+[project]
+name = "lnn-convert"
+version = "0.1.0"
+description = "Convert ONNX models to the .lnn format for the lnn wasm runtime"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.21", "onnx>=1.12", "onnxruntime>=1.12"]
+
+[project.scripts]
+lnn-convert = "lnn_convert.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["lnn_convert*"]

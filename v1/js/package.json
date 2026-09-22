@@ -1,0 +1,20 @@
+{
+  "name": "lnn",
+  "version": "0.1.0",
+  "description": "int8 neural network inference in the browser: a ~18 KB gzipped wasm runtime with no dependencies",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./detect": { "types": "./dist/detect.d.ts", "import": "./dist/detect.js" }
+  },
+  "files": ["dist", "wasm"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "keywords": ["wasm", "webassembly", "inference", "int8", "quantized", "onnx"],
+  "license": "MIT",
+  "devDependencies": { "typescript": "^5.4.0" }
+}

@@ -1,0 +1,31 @@
+[package]
+name = "lnn"
+version = "0.1.0"
+edition = "2021"
+description = "A dependency-free int8 neural network runtime for wasm32"
+license = "MIT"
+
+[lib]
+# cdylib for the .wasm, rlib so `cargo test` can run the kernels natively.
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+# Not "z". This is a numeric kernel: unrolling and inlining in the GEMM are
+# worth far more than the few KB "z" saves. Size comes from no_std, no
+# dependencies and wasm-opt instead (design doc 10.3).
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+panic = "abort"
+
+[features]
+# Benchmark-only exports (the GEMM optimization ladder). Never in a release
+# build: the lower rungs are deliberately slow code.
+bench = []
+
+[dependencies]
+# intentionally empty
