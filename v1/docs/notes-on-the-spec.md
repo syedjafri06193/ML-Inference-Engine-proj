@@ -1,6 +1,6 @@
 # Notes on the design document
 
-Where this implementation departs from `Documentation/README.md`, and why.
+Where this implementation departs from `docs/design.md`, and why.
 Two kinds of entry: deliberate scope decisions, and places where the
 document's own reference material would have produced a bug.
 
