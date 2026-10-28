@@ -55,14 +55,38 @@ pub unsafe fn microkernel(a: *const i8, b: *const i8, kq: usize, acc: &mut [i32;
         let r3_01 = i32x4_shuffle::<2, 2, 2, 2>(a23, a23);
         let r3_23 = i32x4_shuffle::<3, 3, 3, 3>(a23, a23);
 
-        c00 = i32x4_add(c00, i32x4_add(i32x4_dot_i16x8(r0_01, b0_01), i32x4_dot_i16x8(r0_23, b0_23)));
-        c01 = i32x4_add(c01, i32x4_add(i32x4_dot_i16x8(r0_01, b1_01), i32x4_dot_i16x8(r0_23, b1_23)));
-        c10 = i32x4_add(c10, i32x4_add(i32x4_dot_i16x8(r1_01, b0_01), i32x4_dot_i16x8(r1_23, b0_23)));
-        c11 = i32x4_add(c11, i32x4_add(i32x4_dot_i16x8(r1_01, b1_01), i32x4_dot_i16x8(r1_23, b1_23)));
-        c20 = i32x4_add(c20, i32x4_add(i32x4_dot_i16x8(r2_01, b0_01), i32x4_dot_i16x8(r2_23, b0_23)));
-        c21 = i32x4_add(c21, i32x4_add(i32x4_dot_i16x8(r2_01, b1_01), i32x4_dot_i16x8(r2_23, b1_23)));
-        c30 = i32x4_add(c30, i32x4_add(i32x4_dot_i16x8(r3_01, b0_01), i32x4_dot_i16x8(r3_23, b0_23)));
-        c31 = i32x4_add(c31, i32x4_add(i32x4_dot_i16x8(r3_01, b1_01), i32x4_dot_i16x8(r3_23, b1_23)));
+        c00 = i32x4_add(
+            c00,
+            i32x4_add(i32x4_dot_i16x8(r0_01, b0_01), i32x4_dot_i16x8(r0_23, b0_23)),
+        );
+        c01 = i32x4_add(
+            c01,
+            i32x4_add(i32x4_dot_i16x8(r0_01, b1_01), i32x4_dot_i16x8(r0_23, b1_23)),
+        );
+        c10 = i32x4_add(
+            c10,
+            i32x4_add(i32x4_dot_i16x8(r1_01, b0_01), i32x4_dot_i16x8(r1_23, b0_23)),
+        );
+        c11 = i32x4_add(
+            c11,
+            i32x4_add(i32x4_dot_i16x8(r1_01, b1_01), i32x4_dot_i16x8(r1_23, b1_23)),
+        );
+        c20 = i32x4_add(
+            c20,
+            i32x4_add(i32x4_dot_i16x8(r2_01, b0_01), i32x4_dot_i16x8(r2_23, b0_23)),
+        );
+        c21 = i32x4_add(
+            c21,
+            i32x4_add(i32x4_dot_i16x8(r2_01, b1_01), i32x4_dot_i16x8(r2_23, b1_23)),
+        );
+        c30 = i32x4_add(
+            c30,
+            i32x4_add(i32x4_dot_i16x8(r3_01, b0_01), i32x4_dot_i16x8(r3_23, b0_23)),
+        );
+        c31 = i32x4_add(
+            c31,
+            i32x4_add(i32x4_dot_i16x8(r3_01, b1_01), i32x4_dot_i16x8(r3_23, b1_23)),
+        );
         q += 1;
     }
 
@@ -98,14 +122,20 @@ pub unsafe fn microkernel_1xn(a: *const i8, b: *const i8, kq: usize, acc: &mut [
         let s0 = i8x16_shuffle::<0, 1, 4, 5, 8, 9, 12, 13, 2, 3, 6, 7, 10, 11, 14, 15>(b0, b0);
         let s1 = i8x16_shuffle::<0, 1, 4, 5, 8, 9, 12, 13, 2, 3, 6, 7, 10, 11, 14, 15>(b1, b1);
 
-        c0 = i32x4_add(c0, i32x4_add(
-            i32x4_dot_i16x8(a01, i16x8_extend_low_i8x16(s0)),
-            i32x4_dot_i16x8(a23, i16x8_extend_high_i8x16(s0)),
-        ));
-        c1 = i32x4_add(c1, i32x4_add(
-            i32x4_dot_i16x8(a01, i16x8_extend_low_i8x16(s1)),
-            i32x4_dot_i16x8(a23, i16x8_extend_high_i8x16(s1)),
-        ));
+        c0 = i32x4_add(
+            c0,
+            i32x4_add(
+                i32x4_dot_i16x8(a01, i16x8_extend_low_i8x16(s0)),
+                i32x4_dot_i16x8(a23, i16x8_extend_high_i8x16(s0)),
+            ),
+        );
+        c1 = i32x4_add(
+            c1,
+            i32x4_add(
+                i32x4_dot_i16x8(a01, i16x8_extend_low_i8x16(s1)),
+                i32x4_dot_i16x8(a23, i16x8_extend_high_i8x16(s1)),
+            ),
+        );
         q += 1;
     }
     let out = acc.as_mut_ptr() as *mut v128;

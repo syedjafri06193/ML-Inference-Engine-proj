@@ -90,17 +90,14 @@ pub fn round_half_away(x: f32) -> i32 {
 /// fp32 → int8 at the graph boundary.
 #[inline(always)]
 pub fn quantize_f32(x: f32, scale: f32, zero_point: i32) -> i8 {
-    let mut v = x / scale;
+    let v = x / scale;
     // NaN compares false everywhere and would fall through to the cast, which
     // saturates it to 0. Pin it to the zero point instead, explicitly.
-    if v != v {
+    if v.is_nan() {
         return clamp(zero_point, -128, 127) as i8;
     }
-    if v > 1.0e6 {
-        v = 1.0e6;
-    } else if v < -1.0e6 {
-        v = -1.0e6;
-    }
+    // Not NaN past this point, so f32::clamp cannot panic.
+    let v = v.clamp(-1.0e6, 1.0e6);
     clamp(round_half_away(v) + zero_point, -128, 127) as i8
 }
 
@@ -174,6 +171,8 @@ mod tests {
         assert_eq!(quantize_f32(1.0e9, 0.1, 0), 127);
         assert_eq!(quantize_f32(-1.0e9, 0.1, 0), -128);
         assert_eq!(quantize_f32(f32::NAN, 0.1, 5), 5);
+        assert_eq!(quantize_f32(f32::INFINITY, 0.1, 0), 127);
+        assert_eq!(quantize_f32(f32::NEG_INFINITY, 0.1, 0), -128);
         assert_eq!(quantize_f32(0.0, 0.1, -128), -128);
     }
 }

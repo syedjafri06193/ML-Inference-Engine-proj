@@ -1,5 +1,7 @@
 # ML Inference Engine (`lnn`)
 
+[![CI](https://github.com/syedjafri06193/ML-Inference-Engine-proj/actions/workflows/ci.yml/badge.svg)](https://github.com/syedjafri06193/ML-Inference-Engine-proj/actions/workflows/ci.yml)
+
 A lightweight WebAssembly runtime that runs int8-quantized neural networks
 in the browser with zero server dependency — **19.5 KB gzipped**, no
 dependencies, `#![no_std]` Rust with a hand-written SIMD GEMM kernel.
@@ -26,9 +28,10 @@ const { Y } = model.run({ X: pixels });
 ```
 .
 ├── README.md          ← you are here
-├── docs/
+├── 1—Documentation/   ← all documentation (index in its README)
 │   ├── design.md      ← full design guide (the spec code comments cite)
-│   └── design.pdf     ← same guide, PDF
+│   ├── design.pdf     ← same guide, PDF
+│   └── v1/            quantization, model format, benchmarks, spec errata
 └── v1/                ← first implementation
     ├── crates/lnn/    Rust runtime: graph, quantization, conv/GEMM kernels
     ├── converter/     Python ONNX → .lnn converter (lnn-convert)
@@ -36,8 +39,7 @@ const { Y } = model.run({ X: pixels });
     ├── tests/         conformance vs NumPy, robustness, arena, browser tests
     ├── bench/         benchmarks
     ├── examples/      digits demo page
-    ├── scripts/       build, size report, feature probes
-    └── docs/          quantization, model format, benchmarks, spec errata
+    └── scripts/       build, size report, feature probes
 ```
 
 Each `vN/` directory is a self-contained iteration. Start with
@@ -69,3 +71,7 @@ lnn-convert model.onnx -o model.lnn --calib samples.npz
 | [v1](v1/) | int8 WASM runtime, 14 operators, ONNX converter, TS API, browser demo | — |
 
 Add a row per version as new iterations land.
+
+## Documentation
+
+All documentation lives in [`1—Documentation/`](1—Documentation/README.md) — start with its index.

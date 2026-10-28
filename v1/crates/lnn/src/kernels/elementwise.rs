@@ -1,7 +1,9 @@
 //! Elementwise and data-movement kernels. None of these are hot enough to
 //! vectorize by hand; the GEMM and depthwise kernels are 90%+ of runtime.
 
-use crate::quant::{clamp, dequantize_i8, mul_by_quantized_multiplier, quantize_f32, round_half_away};
+use crate::quant::{
+    clamp, dequantize_i8, mul_by_quantized_multiplier, quantize_f32, round_half_away,
+};
 
 pub struct AddParams {
     pub left_shift: i32,
@@ -28,7 +30,8 @@ pub unsafe fn add(a: *const i8, b: *const i8, y: *mut i8, n: usize, p: &AddParam
     for i in 0..n {
         let x1 = (*a.add(i) as i32 - p.z1) << p.left_shift;
         let x2 = (*b.add(i) as i32 - p.z2) << p.left_shift;
-        let s = mul_by_quantized_multiplier(x1, p.m1, p.s1) + mul_by_quantized_multiplier(x2, p.m2, p.s2);
+        let s = mul_by_quantized_multiplier(x1, p.m1, p.s1)
+            + mul_by_quantized_multiplier(x2, p.m2, p.s2);
         let v = mul_by_quantized_multiplier(s, p.mo, p.so) + p.zo;
         *y.add(i) = clamp(v, p.lo, p.hi) as i8;
     }
@@ -40,9 +43,28 @@ pub unsafe fn add(a: *const i8, b: *const i8, y: *mut i8, n: usize, p: &AddParam
 ///
 /// # Safety
 /// `a`/`y` hold `n` elements; `b` holds `nb` with `nb ∈ {n, channels, 1}`.
-pub unsafe fn mul(a: *const i8, b: *const i8, y: *mut i8, n: usize, nb: usize, z1: i32, z2: i32, zo: i32, mo: i32, so: i32, lo: i32, hi: i32) {
+pub unsafe fn mul(
+    a: *const i8,
+    b: *const i8,
+    y: *mut i8,
+    n: usize,
+    nb: usize,
+    z1: i32,
+    z2: i32,
+    zo: i32,
+    mo: i32,
+    so: i32,
+    lo: i32,
+    hi: i32,
+) {
     for i in 0..n {
-        let j = if nb == n { i } else if nb == 1 { 0 } else { i % nb };
+        let j = if nb == n {
+            i
+        } else if nb == 1 {
+            0
+        } else {
+            i % nb
+        };
         let acc = (*a.add(i) as i32 - z1) * (*b.add(j) as i32 - z2);
         let v = mul_by_quantized_multiplier(acc, mo, so) + zo;
         *y.add(i) = clamp(v, lo, hi) as i8;
@@ -111,7 +133,18 @@ pub unsafe fn softmax(x: *const i8, table: *const f32, y: *mut i8, rows: usize, 
 /// # Safety
 /// The validator checks every input's outer size matches and the channel
 /// counts sum to the output's.
-pub unsafe fn concat_input(x: *const i8, y: *mut i8, outer: usize, c_in: usize, c_out: usize, c_off: usize, zin: i32, zout: i32, mult: i32, shift: i32) {
+pub unsafe fn concat_input(
+    x: *const i8,
+    y: *mut i8,
+    outer: usize,
+    c_in: usize,
+    c_out: usize,
+    c_off: usize,
+    zin: i32,
+    zout: i32,
+    mult: i32,
+    shift: i32,
+) {
     for o in 0..outer {
         let src = x.add(o * c_in);
         let dst = y.add(o * c_out + c_off);

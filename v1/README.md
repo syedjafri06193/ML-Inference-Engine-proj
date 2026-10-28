@@ -50,7 +50,7 @@ PWA, a widget — this is 50× smaller.
 ## Numbers
 
 Measured on an Intel Xeon @ 2.10 GHz under Node 22 (V8 12.4 — the same engine
-as Chrome). Full tables in [docs/benchmarks.md](docs/benchmarks.md).
+as Chrome). Full tables in [docs/benchmarks.md](../1—Documentation/v1/benchmarks.md).
 
 **The GEMM optimization ladder** (int8 GOP/s, each column adds one thing):
 
@@ -112,8 +112,8 @@ that is the kernel that got the attention: a 4×8 register tile with eight
 three ISAs can read, and a separate 1×8 path for batch-1 classifier heads.
 
 The design decisions and their reasoning are in
-[docs/quantization.md](docs/quantization.md) and
-[docs/model-format.md](docs/model-format.md).
+[docs/quantization.md](../1—Documentation/v1/quantization.md) and
+[docs/model-format.md](../1—Documentation/v1/model-format.md).
 
 ## Layout
 
@@ -167,7 +167,7 @@ Worth knowing before you adopt it.
 * **Not an LLM runtime.** A 1B-parameter int8 model is 1 GB resident with no
   way to page it. WebLLM and wllama solve that problem properly.
 
-[docs/notes-on-the-spec.md](docs/notes-on-the-spec.md) records where this
+[docs/notes-on-the-spec.md](../1—Documentation/v1/notes-on-the-spec.md) records where this
 departs from the design document it was built from — including four bugs in
 the document's own reference code, one of which would have made results
 differ between Intel and ARM machines.

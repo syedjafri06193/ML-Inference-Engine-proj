@@ -102,16 +102,29 @@ fn conv_geom(node: &Node, x: &Tensor, y: &Tensor, kh: usize, kw: usize) -> Resul
     need(pads.iter().all(|&p| (0..=64).contains(&p)), Error::BadAttr)?;
     need(kh >= 1 && kw >= 1 && kh <= 64 && kw <= 64, Error::BadAttr)?;
     let g = ConvGeom {
-        h, w, c, kh, kw,
-        sh: sh as usize, sw: sw as usize,
-        pt: pads[0] as usize, pl: pads[1] as usize,
-        dh: dh as usize, dw: dw as usize,
-        oh, ow,
+        h,
+        w,
+        c,
+        kh,
+        kw,
+        sh: sh as usize,
+        sw: sw as usize,
+        pt: pads[0] as usize,
+        pl: pads[1] as usize,
+        dh: dh as usize,
+        dw: dw as usize,
+        oh,
+        ow,
     };
-    let eh = conv::out_extent(h, pads[0] as usize, pads[2] as usize, kh, g.sh, g.dh).ok_or(Error::BadShape)?;
-    let ew_ = conv::out_extent(w, pads[1] as usize, pads[3] as usize, kw, g.sw, g.dw).ok_or(Error::BadShape)?;
+    let eh = conv::out_extent(h, pads[0] as usize, pads[2] as usize, kh, g.sh, g.dh)
+        .ok_or(Error::BadShape)?;
+    let ew_ = conv::out_extent(w, pads[1] as usize, pads[3] as usize, kw, g.sw, g.dw)
+        .ok_or(Error::BadShape)?;
     need(eh == oh && ew_ == ow, Error::BadShape)?;
-    need(x.rank == 4 && y.rank == 4 && x.dims[0] == 1 && y.dims[0] == 1, Error::BadShape)?;
+    need(
+        x.rank == 4 && y.rank == 4 && x.dims[0] == 1 && y.dims[0] == 1,
+        Error::BadShape,
+    )?;
     Ok(g)
 }
 
@@ -123,10 +136,16 @@ pub fn validate_node(m: &Model, node: &Node) -> Result<(), Error> {
 
     match node.opcode {
         OP_CONV2D | OP_DEPTHWISE_CONV2D => {
-            need(node.n_in() == 5 && node.n_out() == 1 && node.n_attrs() >= 12, Error::BadNode)?;
+            need(
+                node.n_in() == 5 && node.n_out() == 1 && node.n_attrs() >= 12,
+                Error::BadNode,
+            )?;
             let (x, w, bias, mult, shift) = (t(0), t(1), t(2), t(3), t(4));
             need(is_i8_act(&x) && is_i8_act(&out), Error::BadDtype)?;
-            need(w.kind == KIND_WEIGHT && w.dtype == DTYPE_I8 && w.rank == 4, Error::BadDtype)?;
+            need(
+                w.kind == KIND_WEIGHT && w.dtype == DTYPE_I8 && w.rank == 4,
+                Error::BadDtype,
+            )?;
             let lo = node.attr(10);
             let hi = node.attr(11);
             need(clamp_attr_ok(lo, hi), Error::BadAttr)?;
@@ -134,75 +153,160 @@ pub fn validate_node(m: &Model, node: &Node) -> Result<(), Error> {
             need(kh >= 1 && kw >= 1, Error::BadAttr)?;
             let g = conv_geom(node, &x, &out, kh as usize, kw as usize)?;
             let n = out.last_dim();
-            need(is_weight(&bias, DTYPE_I32, n) && is_weight(&mult, DTYPE_I32, n) && is_weight(&shift, DTYPE_I32, n), Error::BadDtype)?;
+            need(
+                is_weight(&bias, DTYPE_I32, n)
+                    && is_weight(&mult, DTYPE_I32, n)
+                    && is_weight(&shift, DTYPE_I32, n),
+                Error::BadDtype,
+            )?;
             need(requant_params_ok(m, &mult, &shift, n), Error::BadAttr)?;
             if node.opcode == OP_CONV2D {
                 // w logical dims (N, KH, KW, C), packed.
-                need(w.dims[0] as usize == n && w.dims[1] as usize == g.kh && w.dims[2] as usize == g.kw && w.dims[3] as usize == g.c, Error::BadShape)?;
-                need(w.nbytes as usize >= gemm::packed_b_bytes(n, g.k()), Error::BadShape)?;
+                need(
+                    w.dims[0] as usize == n
+                        && w.dims[1] as usize == g.kh
+                        && w.dims[2] as usize == g.kw
+                        && w.dims[3] as usize == g.c,
+                    Error::BadShape,
+                )?;
+                need(
+                    w.nbytes as usize >= gemm::packed_b_bytes(n, g.k()),
+                    Error::BadShape,
+                )?;
                 let req = gemm::round_up(g.im2col_bytes(), 16) + gemm::gemm_scratch_bytes(g.k());
                 need(req <= scratch, Error::ScratchTooSmall)?;
             } else {
                 // depthwise: w dims (1, KH, KW, C), channel multiplier 1.
                 need(n == g.c, Error::BadShape)?;
-                need(w.dims[1] as usize == g.kh && w.dims[2] as usize == g.kw && w.dims[3] as usize == g.c, Error::BadShape)?;
+                need(
+                    w.dims[1] as usize == g.kh
+                        && w.dims[2] as usize == g.kw
+                        && w.dims[3] as usize == g.c,
+                    Error::BadShape,
+                )?;
                 need(w.nbytes as usize >= g.kh * g.kw * g.c, Error::BadShape)?;
             }
         }
         OP_FULLY_CONNECTED => {
-            need(node.n_in() == 5 && node.n_out() == 1 && node.n_attrs() >= 2, Error::BadNode)?;
+            need(
+                node.n_in() == 5 && node.n_out() == 1 && node.n_attrs() >= 2,
+                Error::BadNode,
+            )?;
             let (x, w, bias, mult, shift) = (t(0), t(1), t(2), t(3), t(4));
             need(is_i8_act(&x) && is_i8_act(&out), Error::BadDtype)?;
-            need(w.kind == KIND_WEIGHT && w.dtype == DTYPE_I8 && w.rank == 2, Error::BadDtype)?;
+            need(
+                w.kind == KIND_WEIGHT && w.dtype == DTYPE_I8 && w.rank == 2,
+                Error::BadDtype,
+            )?;
             let (n, k) = (w.dims[0] as usize, w.dims[1] as usize);
             need(x.numel() % k == 0, Error::BadShape)?;
             let rows = x.numel() / k;
-            need(out.numel() == rows * n && out.last_dim() == n, Error::BadShape)?;
-            need(w.nbytes as usize >= gemm::packed_b_bytes(n, k), Error::BadShape)?;
-            need(is_weight(&bias, DTYPE_I32, n) && is_weight(&mult, DTYPE_I32, n) && is_weight(&shift, DTYPE_I32, n), Error::BadDtype)?;
+            need(
+                out.numel() == rows * n && out.last_dim() == n,
+                Error::BadShape,
+            )?;
+            need(
+                w.nbytes as usize >= gemm::packed_b_bytes(n, k),
+                Error::BadShape,
+            )?;
+            need(
+                is_weight(&bias, DTYPE_I32, n)
+                    && is_weight(&mult, DTYPE_I32, n)
+                    && is_weight(&shift, DTYPE_I32, n),
+                Error::BadDtype,
+            )?;
             need(requant_params_ok(m, &mult, &shift, n), Error::BadAttr)?;
             need(clamp_attr_ok(node.attr(0), node.attr(1)), Error::BadAttr)?;
-            need(gemm::gemm_scratch_bytes(k) <= scratch, Error::ScratchTooSmall)?;
+            need(
+                gemm::gemm_scratch_bytes(k) <= scratch,
+                Error::ScratchTooSmall,
+            )?;
         }
         OP_ADD => {
-            need(node.n_in() == 2 && node.n_out() == 1 && node.n_attrs() >= 9, Error::BadNode)?;
+            need(
+                node.n_in() == 2 && node.n_out() == 1 && node.n_attrs() >= 9,
+                Error::BadNode,
+            )?;
             let (a, b) = (t(0), t(1));
-            need(is_i8_act(&a) && is_i8_act(&b) && is_i8_act(&out), Error::BadDtype)?;
-            need(a.numel() == out.numel() && b.numel() == out.numel(), Error::BadShape)?;
+            need(
+                is_i8_act(&a) && is_i8_act(&b) && is_i8_act(&out),
+                Error::BadDtype,
+            )?;
+            need(
+                a.numel() == out.numel() && b.numel() == out.numel(),
+                Error::BadShape,
+            )?;
             need((0..=22).contains(&node.attr(0)), Error::BadAttr)?;
             for i in [1, 3, 5] {
-                need(node.attr(i) >= 0 && shift_ok(node.attr(i + 1)), Error::BadAttr)?;
+                need(
+                    node.attr(i) >= 0 && shift_ok(node.attr(i + 1)),
+                    Error::BadAttr,
+                )?;
             }
             need(clamp_attr_ok(node.attr(7), node.attr(8)), Error::BadAttr)?;
         }
         OP_MUL => {
-            need(node.n_in() == 2 && node.n_out() == 1 && node.n_attrs() >= 4, Error::BadNode)?;
+            need(
+                node.n_in() == 2 && node.n_out() == 1 && node.n_attrs() >= 4,
+                Error::BadNode,
+            )?;
             let (a, b) = (t(0), t(1));
             need(is_i8_act(&a) && is_i8_act(&out), Error::BadDtype)?;
             // The second operand may be a constant (a weight) or an activation.
             need(b.dtype == DTYPE_I8 && b.n_scales >= 1, Error::BadDtype)?;
             need(a.numel() == out.numel(), Error::BadShape)?;
             let nb = b.numel();
-            need(nb == a.numel() || nb == 1 || nb == a.last_dim(), Error::BadShape)?;
+            need(
+                nb == a.numel() || nb == 1 || nb == a.last_dim(),
+                Error::BadShape,
+            )?;
             need(node.attr(0) >= 0 && shift_ok(node.attr(1)), Error::BadAttr)?;
             need(clamp_attr_ok(node.attr(2), node.attr(3)), Error::BadAttr)?;
         }
         OP_MAXPOOL2D | OP_AVGPOOL2D => {
-            need(node.n_in() == 1 && node.n_out() == 1 && node.n_attrs() >= 10, Error::BadNode)?;
+            need(
+                node.n_in() == 1 && node.n_out() == 1 && node.n_attrs() >= 10,
+                Error::BadNode,
+            )?;
             let x = t(0);
             need(is_i8_act(&x) && is_i8_act(&out), Error::BadDtype)?;
             need(x.last_dim() == out.last_dim(), Error::BadShape)?;
             let (kh, kw) = (node.attr(0), node.attr(1));
-            need(kh >= 1 && kw >= 1 && kh <= 4096 && kw <= 4096, Error::BadAttr)?;
+            need(
+                kh >= 1 && kw >= 1 && kh <= 4096 && kw <= 4096,
+                Error::BadAttr,
+            )?;
             // Pools have no dilation; reuse the conv geometry check with 1s.
             let (h, w, c) = x.hwc();
             let (oh, ow, _) = out.hwc();
             let (sh, sw) = (node.attr(2), node.attr(3));
             let pads = [node.attr(4), node.attr(5), node.attr(6), node.attr(7)];
-            need(sh >= 1 && sw >= 1 && pads.iter().all(|&p| (0..=4096).contains(&p)), Error::BadAttr)?;
-            let eh = conv::out_extent(h, pads[0] as usize, pads[2] as usize, kh as usize, sh as usize, 1).ok_or(Error::BadShape)?;
-            let ew_ = conv::out_extent(w, pads[1] as usize, pads[3] as usize, kw as usize, sw as usize, 1).ok_or(Error::BadShape)?;
-            need(eh == oh && ew_ == ow && x.numel() == h * w * c, Error::BadShape)?;
+            need(
+                sh >= 1 && sw >= 1 && pads.iter().all(|&p| (0..=4096).contains(&p)),
+                Error::BadAttr,
+            )?;
+            let eh = conv::out_extent(
+                h,
+                pads[0] as usize,
+                pads[2] as usize,
+                kh as usize,
+                sh as usize,
+                1,
+            )
+            .ok_or(Error::BadShape)?;
+            let ew_ = conv::out_extent(
+                w,
+                pads[1] as usize,
+                pads[3] as usize,
+                kw as usize,
+                sw as usize,
+                1,
+            )
+            .ok_or(Error::BadShape)?;
+            need(
+                eh == oh && ew_ == ow && x.numel() == h * w * c,
+                Error::BadShape,
+            )?;
             need(clamp_attr_ok(node.attr(8), node.attr(9)), Error::BadAttr)?;
         }
         OP_SOFTMAX => {
@@ -220,7 +324,10 @@ pub fn validate_node(m: &Model, node: &Node) -> Result<(), Error> {
         }
         OP_CONCAT => {
             let n = node.n_in();
-            need(n >= 1 && node.n_out() == 1 && node.n_attrs() >= 2 * n, Error::BadNode)?;
+            need(
+                n >= 1 && node.n_out() == 1 && node.n_attrs() >= 2 * n,
+                Error::BadNode,
+            )?;
             need(is_i8_act(&out), Error::BadDtype)?;
             let c_out = out.last_dim();
             let outer = out.numel() / c_out;
@@ -230,27 +337,42 @@ pub fn validate_node(m: &Model, node: &Node) -> Result<(), Error> {
                 need(is_i8_act(&x), Error::BadDtype)?;
                 let c = x.last_dim();
                 need(x.numel() == outer * c, Error::BadShape)?;
-                need(node.attr(2 * i) >= 0 && shift_ok(node.attr(2 * i + 1)), Error::BadAttr)?;
+                need(
+                    node.attr(2 * i) >= 0 && shift_ok(node.attr(2 * i + 1)),
+                    Error::BadAttr,
+                )?;
                 total += c;
             }
             need(total == c_out, Error::BadShape)?;
         }
         OP_CLAMP => {
-            need(node.n_in() == 1 && node.n_out() == 1 && node.n_attrs() >= 2, Error::BadNode)?;
+            need(
+                node.n_in() == 1 && node.n_out() == 1 && node.n_attrs() >= 2,
+                Error::BadNode,
+            )?;
             let x = t(0);
-            need(is_i8_act(&x) && is_i8_act(&out) && x.numel() == out.numel(), Error::BadShape)?;
+            need(
+                is_i8_act(&x) && is_i8_act(&out) && x.numel() == out.numel(),
+                Error::BadShape,
+            )?;
             need(clamp_attr_ok(node.attr(0), node.attr(1)), Error::BadAttr)?;
         }
         OP_LOOKUP => {
             need(node.n_in() == 2 && node.n_out() == 1, Error::BadNode)?;
             let (x, table) = (t(0), t(1));
-            need(is_i8_act(&x) && is_i8_act(&out) && x.numel() == out.numel(), Error::BadShape)?;
+            need(
+                is_i8_act(&x) && is_i8_act(&out) && x.numel() == out.numel(),
+                Error::BadShape,
+            )?;
             need(is_weight(&table, DTYPE_I8, 256), Error::BadDtype)?;
         }
         OP_QUANTIZE => {
             need(node.n_in() == 1 && node.n_out() == 1, Error::BadNode)?;
             let x = t(0);
-            need(x.is_activation() && x.dtype == DTYPE_F32 && is_i8_act(&out), Error::BadDtype)?;
+            need(
+                x.is_activation() && x.dtype == DTYPE_F32 && is_i8_act(&out),
+                Error::BadDtype,
+            )?;
             need(x.numel() == out.numel(), Error::BadShape)?;
         }
         OP_DEQUANTIZE => {
@@ -289,7 +411,15 @@ pub unsafe fn run(m: &Model, b: &Buffers) {
         match node.opcode {
             OP_CONV2D | OP_DEPTHWISE_CONV2D => {
                 let (x, w) = (t(0), t(1));
-                let g = conv_geom(&node, &x, &out, node.attr(0) as usize, node.attr(1) as usize).ok().unwrap_unchecked();
+                let g = conv_geom(
+                    &node,
+                    &x,
+                    &out,
+                    node.attr(0) as usize,
+                    node.attr(1) as usize,
+                )
+                .ok()
+                .unwrap_unchecked();
                 let args = ConvArgs {
                     x: m.ptr(&x, b) as *const i8,
                     w: m.ptr(&w, b) as *const i8,
@@ -346,14 +476,29 @@ pub unsafe fn run(m: &Model, b: &Buffers) {
                     lo: node.attr(7),
                     hi: node.attr(8),
                 };
-                ew::add(m.ptr(&a1, b) as *const i8, m.ptr(&a2, b) as *const i8, y as *mut i8, out.numel(), &p);
+                ew::add(
+                    m.ptr(&a1, b) as *const i8,
+                    m.ptr(&a2, b) as *const i8,
+                    y as *mut i8,
+                    out.numel(),
+                    &p,
+                );
             }
             OP_MUL => {
                 let (a1, a2) = (t(0), t(1));
                 ew::mul(
-                    m.ptr(&a1, b) as *const i8, m.ptr(&a2, b) as *const i8, y as *mut i8,
-                    out.numel(), a2.numel(), a1.zero_point, a2.zero_point, out.zero_point,
-                    node.attr(0), node.attr(1), node.attr(2), node.attr(3),
+                    m.ptr(&a1, b) as *const i8,
+                    m.ptr(&a2, b) as *const i8,
+                    y as *mut i8,
+                    out.numel(),
+                    a2.numel(),
+                    a1.zero_point,
+                    a2.zero_point,
+                    out.zero_point,
+                    node.attr(0),
+                    node.attr(1),
+                    node.attr(2),
+                    node.attr(3),
                 );
             }
             OP_MAXPOOL2D | OP_AVGPOOL2D => {
@@ -361,18 +506,39 @@ pub unsafe fn run(m: &Model, b: &Buffers) {
                 let (h, w, c) = x.hwc();
                 let (oh, ow, _) = out.hwc();
                 let g = ConvGeom {
-                    h, w, c,
-                    kh: node.attr(0) as usize, kw: node.attr(1) as usize,
-                    sh: node.attr(2) as usize, sw: node.attr(3) as usize,
-                    pt: node.attr(4) as usize, pl: node.attr(5) as usize,
-                    dh: 1, dw: 1, oh, ow,
+                    h,
+                    w,
+                    c,
+                    kh: node.attr(0) as usize,
+                    kw: node.attr(1) as usize,
+                    sh: node.attr(2) as usize,
+                    sw: node.attr(3) as usize,
+                    pt: node.attr(4) as usize,
+                    pl: node.attr(5) as usize,
+                    dh: 1,
+                    dw: 1,
+                    oh,
+                    ow,
                 };
-                conv::pool(&g, m.ptr(&x, b) as *const i8, y as *mut i8, node.opcode == OP_AVGPOOL2D, node.attr(8), node.attr(9));
+                conv::pool(
+                    &g,
+                    m.ptr(&x, b) as *const i8,
+                    y as *mut i8,
+                    node.opcode == OP_AVGPOOL2D,
+                    node.attr(8),
+                    node.attr(9),
+                );
             }
             OP_SOFTMAX => {
                 let x = t(0);
                 let c = x.last_dim();
-                ew::softmax(m.ptr(&x, b) as *const i8, m.ptr(&t(1), b) as *const f32, y as *mut i8, x.numel() / c, c);
+                ew::softmax(
+                    m.ptr(&x, b) as *const i8,
+                    m.ptr(&t(1), b) as *const f32,
+                    y as *mut i8,
+                    x.numel() / c,
+                    c,
+                );
             }
             OP_RESHAPE => {
                 let x = t(0);
@@ -390,25 +556,59 @@ pub unsafe fn run(m: &Model, b: &Buffers) {
                 for i in 0..node.n_in() {
                     let x = t(i);
                     let c = x.last_dim();
-                    ew::concat_input(m.ptr(&x, b) as *const i8, y as *mut i8, outer, c, c_out, off, x.zero_point, out.zero_point, node.attr(2 * i), node.attr(2 * i + 1));
+                    ew::concat_input(
+                        m.ptr(&x, b) as *const i8,
+                        y as *mut i8,
+                        outer,
+                        c,
+                        c_out,
+                        off,
+                        x.zero_point,
+                        out.zero_point,
+                        node.attr(2 * i),
+                        node.attr(2 * i + 1),
+                    );
                     off += c;
                 }
             }
             OP_CLAMP => {
                 let x = t(0);
-                ew::clamp_i8(m.ptr(&x, b) as *const i8, y as *mut i8, x.numel(), node.attr(0), node.attr(1));
+                ew::clamp_i8(
+                    m.ptr(&x, b) as *const i8,
+                    y as *mut i8,
+                    x.numel(),
+                    node.attr(0),
+                    node.attr(1),
+                );
             }
             OP_LOOKUP => {
                 let x = t(0);
-                ew::lookup(m.ptr(&x, b) as *const i8, m.ptr(&t(1), b) as *const i8, y as *mut i8, x.numel());
+                ew::lookup(
+                    m.ptr(&x, b) as *const i8,
+                    m.ptr(&t(1), b) as *const i8,
+                    y as *mut i8,
+                    x.numel(),
+                );
             }
             OP_QUANTIZE => {
                 let x = t(0);
-                ew::quantize(m.ptr(&x, b) as *const f32, y as *mut i8, x.numel(), m.scale(&out), out.zero_point);
+                ew::quantize(
+                    m.ptr(&x, b) as *const f32,
+                    y as *mut i8,
+                    x.numel(),
+                    m.scale(&out),
+                    out.zero_point,
+                );
             }
             OP_DEQUANTIZE => {
                 let x = t(0);
-                ew::dequantize(m.ptr(&x, b) as *const i8, y as *mut f32, x.numel(), m.scale(&x), x.zero_point);
+                ew::dequantize(
+                    m.ptr(&x, b) as *const i8,
+                    y as *mut f32,
+                    x.numel(),
+                    m.scale(&x),
+                    x.zero_point,
+                );
             }
             _ => core::hint::unreachable_unchecked(),
         }

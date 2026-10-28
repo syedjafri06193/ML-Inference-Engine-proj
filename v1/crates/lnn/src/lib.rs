@@ -201,14 +201,20 @@ pub extern "C" fn lnn_input_ptr(index: u32) -> *mut u8 {
 /// Input `index`'s size in bytes.
 #[no_mangle]
 pub extern "C" fn lnn_input_len(index: u32) -> u32 {
-    io_span(KIND_INPUT, index).map(|(_, n)| n as u32).unwrap_or(0)
+    io_span(KIND_INPUT, index)
+        .map(|(_, n)| n as u32)
+        .unwrap_or(0)
 }
 
 /// Execute the graph. 0 on success, negative on error.
 #[no_mangle]
 pub extern "C" fn lnn_run() -> i32 {
     let ok = with_model(|m, e| {
-        let b = Buffers { arena: e.arena, scratch: e.scratch, isa: e.isa };
+        let b = Buffers {
+            arena: e.arena,
+            scratch: e.scratch,
+            isa: e.isa,
+        };
         unsafe { graph::run(m, &b) };
     });
     match ok {
@@ -227,7 +233,9 @@ pub extern "C" fn lnn_output_ptr(index: u32) -> *const u8 {
 
 #[no_mangle]
 pub extern "C" fn lnn_output_len(index: u32) -> u32 {
-    io_span(KIND_OUTPUT, index).map(|(_, n)| n as u32).unwrap_or(0)
+    io_span(KIND_OUTPUT, index)
+        .map(|(_, n)| n as u32)
+        .unwrap_or(0)
 }
 
 /// Which kernel the loaded model actually runs on: 0 scalar, 1 simd128,

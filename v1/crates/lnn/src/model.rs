@@ -111,8 +111,16 @@ impl Tensor {
     /// NHWC view: (H, W, C). Rank-2 tensors are treated as 1x1 spatial.
     pub fn hwc(&self) -> (usize, usize, usize) {
         match self.rank {
-            4 => (self.dims[1] as usize, self.dims[2] as usize, self.dims[3] as usize),
-            3 => (self.dims[0] as usize, self.dims[1] as usize, self.dims[2] as usize),
+            4 => (
+                self.dims[1] as usize,
+                self.dims[2] as usize,
+                self.dims[3] as usize,
+            ),
+            3 => (
+                self.dims[0] as usize,
+                self.dims[1] as usize,
+                self.dims[2] as usize,
+            ),
             2 => (1, 1, self.dims[1] as usize),
             1 => (1, 1, self.dims[0] as usize),
             _ => (1, 1, 1),
@@ -222,7 +230,10 @@ impl<'a> Model<'a> {
             return Err(Error::Truncated);
         }
 
-        let m = Model { header: h, raw: buf };
+        let m = Model {
+            header: h,
+            raw: buf,
+        };
         m.validate_tensors()?;
         m.validate_nodes()?;
         Ok(m)
@@ -247,7 +258,12 @@ impl<'a> Model<'a> {
             rank: b[o + 1],
             kind: b[o + 2],
             n_scales: b[o + 3],
-            dims: [rd_u32(b, o + 4), rd_u32(b, o + 8), rd_u32(b, o + 12), rd_u32(b, o + 16)],
+            dims: [
+                rd_u32(b, o + 4),
+                rd_u32(b, o + 8),
+                rd_u32(b, o + 12),
+                rd_u32(b, o + 16),
+            ],
             offset: rd_u32(b, o + 20),
             scale_off: rd_u32(b, o + 24),
             zero_point: rd_u32(b, o + 28) as i32,
@@ -375,7 +391,11 @@ pub struct NodeCursor<'m, 'a> {
 impl<'m, 'a> NodeCursor<'m, 'a> {
     pub fn new(model: &'m Model<'a>) -> Self {
         let pos = model.header.nodes_off as usize;
-        NodeCursor { model, pos, end: pos + model.header.nodes_bytes as usize }
+        NodeCursor {
+            model,
+            pos,
+            end: pos + model.header.nodes_bytes as usize,
+        }
     }
 
     pub fn next_checked(&mut self) -> Result<Option<Node<'a>>, Error> {
