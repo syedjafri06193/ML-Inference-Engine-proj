@@ -2,7 +2,7 @@
 //!
 //! These exist to measure the optimization ladder from design doc M4 — naive
 //! loops, then blocking and packing, then the SIMD microkernels — on the same
-//! matrix shapes, in the same engine, so the numbers in `docs/benchmarks.md`
+//! matrix shapes, in the same engine, so the numbers in `1—Documentation/v1/benchmarks.md`
 //! are comparable. They are not part of the shipped runtime: the ladder's
 //! lower rungs are code nobody should run in production.
 
@@ -71,7 +71,11 @@ unsafe fn pack_b(n: usize, k: usize) {
             for c in 0..gemm::NR {
                 for i in 0..4 {
                     let (nn, kk) = (nb * gemm::NR + c, q * 4 + i);
-                    let v = if nn < n && kk < k { *B.add(nn * k + kk) } else { 0 };
+                    let v = if nn < n && kk < k {
+                        *B.add(nn * k + kk)
+                    } else {
+                        0
+                    };
                     *BP.add(nb * gemm::NR * kp + q * 32 + c * 4 + i) = v;
                 }
             }
@@ -114,10 +118,20 @@ pub unsafe extern "C" fn lnn_bench_gemm(rung: u32) -> i32 {
 
 unsafe fn run(isa: Isa, m: usize, n: usize, k: usize) {
     let g = Gemm {
-        m, n, k,
-        a: A, lda: k, b: BP,
-        bias: BIAS, mult: MULT, shift: SHIFT,
-        out: C, ldc: n, zero_point: 0, lo: -128, hi: 127,
+        m,
+        n,
+        k,
+        a: A,
+        lda: k,
+        b: BP,
+        bias: BIAS,
+        mult: MULT,
+        shift: SHIFT,
+        out: C,
+        ldc: n,
+        zero_point: 0,
+        lo: -128,
+        hi: 127,
     };
     gemm::gemm(&g, SCRATCH, isa);
 }

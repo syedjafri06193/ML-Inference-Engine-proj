@@ -31,11 +31,11 @@
 //! (Kp × 8 bytes) stays hot in L1. There is no KC blocking: every layer in
 //! the target models has K ≤ 1280, so a whole B panel is at most 10 KB.
 
+#[cfg(all(target_arch = "wasm32", target_feature = "relaxed-simd"))]
+pub mod relaxed;
 pub mod scalar;
 #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 pub mod simd128;
-#[cfg(all(target_arch = "wasm32", target_feature = "relaxed-simd"))]
-pub mod relaxed;
 
 use crate::quant::requantize;
 
@@ -160,7 +160,14 @@ fn microkernel(isa: Isa) -> Microkernel {
 /// `a` must be readable for `rows` rows of `k` bytes at stride `lda`;
 /// `dst` must hold `round_up(rows, 4) * round_up(k, 4)` bytes and `sums`
 /// `round_up(rows, 4)` i32.
-pub unsafe fn pack_a(a: *const i8, lda: usize, rows: usize, k: usize, dst: *mut i8, sums: *mut i32) {
+pub unsafe fn pack_a(
+    a: *const i8,
+    lda: usize,
+    rows: usize,
+    k: usize,
+    dst: *mut i8,
+    sums: *mut i32,
+) {
     let kp = round_up(k, 4);
     let mut mb = 0;
     while mb * MR < rows {
@@ -172,7 +179,11 @@ pub unsafe fn pack_a(a: *const i8, lda: usize, rows: usize, k: usize, dst: *mut 
             while kq * 4 < kp {
                 for i in 0..4 {
                     let kk = kq * 4 + i;
-                    let v = if row < rows && kk < k { *a.add(row * lda + kk) } else { 0 };
+                    let v = if row < rows && kk < k {
+                        *a.add(row * lda + kk)
+                    } else {
+                        0
+                    };
                     *panel.add(kq * 16 + r * 4 + i) = v;
                     sum += v as i32;
                 }
@@ -250,7 +261,16 @@ pub unsafe fn gemm(g: &Gemm, scratch: *mut u8, isa: Isa) {
 
 /// The M = 1 case: one packed row swept across the B panels.
 #[allow(clippy::too_many_arguments)]
-unsafe fn gemv(g: &Gemm, packed: *mut i8, sums: *mut i32, kq: usize, np: usize, kp: usize, isa: Isa, correction: i32) {
+unsafe fn gemv(
+    g: &Gemm,
+    packed: *mut i8,
+    sums: *mut i32,
+    kq: usize,
+    np: usize,
+    kp: usize,
+    isa: Isa,
+    correction: i32,
+) {
     let kernel = microkernel1(isa);
     // Pack the single row: copy, then zero out to a multiple of 4.
     core::ptr::copy_nonoverlapping(g.a, packed, g.k);
@@ -310,12 +330,25 @@ mod tests {
     struct Lcg(u64);
     impl Lcg {
         fn next(&mut self) -> i8 {
-            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (self.0 >> 56) as i8
         }
     }
 
-    fn reference(a: &[i8], w: &[i8], m: usize, n: usize, k: usize, bias: &[i32], mult: &[i32], shift: &[i32], zp: i32) -> std::vec::Vec<i8> {
+    fn reference(
+        a: &[i8],
+        w: &[i8],
+        m: usize,
+        n: usize,
+        k: usize,
+        bias: &[i32],
+        mult: &[i32],
+        shift: &[i32],
+        zp: i32,
+    ) -> std::vec::Vec<i8> {
         let mut out = std::vec![0i8; m * n];
         for i in 0..m {
             for j in 0..n {
@@ -333,13 +366,23 @@ mod tests {
     fn packed_gemm_matches_the_naive_loop_on_awkward_shapes() {
         // Shapes chosen to hit every edge: M not a multiple of 4 or of MC,
         // N not a multiple of 8, K not a multiple of 4, and 1s everywhere.
-        let shapes = [(1, 1, 1), (3, 5, 7), (4, 8, 4), (65, 9, 13), (130, 17, 33), (7, 64, 100), (1, 10, 64)];
+        let shapes = [
+            (1, 1, 1),
+            (3, 5, 7),
+            (4, 8, 4),
+            (65, 9, 13),
+            (130, 17, 33),
+            (7, 64, 100),
+            (1, 10, 64),
+        ];
         let mut rng = Lcg(42);
         for &(m, n, k) in &shapes {
             let a: std::vec::Vec<i8> = (0..m * k).map(|_| rng.next()).collect();
             let w: std::vec::Vec<i8> = (0..n * k).map(|_| rng.next()).collect();
             let bias: std::vec::Vec<i32> = (0..n).map(|i| (i as i32 - 3) * 997).collect();
-            let mult: std::vec::Vec<i32> = (0..n).map(|i| 1_100_000_000 + i as i32 * 7_000_000).collect();
+            let mult: std::vec::Vec<i32> = (0..n)
+                .map(|i| 1_100_000_000 + i as i32 * 7_000_000)
+                .collect();
             let shift: std::vec::Vec<i32> = (0..n).map(|i| -(6 + (i % 3) as i32)).collect();
             let zp = -7;
 
@@ -349,14 +392,33 @@ mod tests {
             let base = scratch.as_mut_ptr();
             let aligned = unsafe { base.add(base.align_offset(16)) };
             let g = Gemm {
-                m, n, k, a: a.as_ptr(), lda: k, b: bp.as_ptr(),
-                bias: bias.as_ptr(), mult: mult.as_ptr(), shift: shift.as_ptr(),
-                out: out.as_mut_ptr(), ldc: n, zero_point: zp, lo: -128, hi: 127,
+                m,
+                n,
+                k,
+                a: a.as_ptr(),
+                lda: k,
+                b: bp.as_ptr(),
+                bias: bias.as_ptr(),
+                mult: mult.as_ptr(),
+                shift: shift.as_ptr(),
+                out: out.as_mut_ptr(),
+                ldc: n,
+                zero_point: zp,
+                lo: -128,
+                hi: 127,
             };
             unsafe { gemm(&g, aligned, Isa::Scalar) };
             let want = reference(&a, &w, m, n, k, &bias, &mult, &shift, zp);
             for i in 0..m * n {
-                assert_eq!(out[i], want[i], "shape {:?}: first mismatch at {} ({} vs {})", (m, n, k), i, out[i], want[i]);
+                assert_eq!(
+                    out[i],
+                    want[i],
+                    "shape {:?}: first mismatch at {} ({} vs {})",
+                    (m, n, k),
+                    i,
+                    out[i],
+                    want[i]
+                );
             }
         }
     }

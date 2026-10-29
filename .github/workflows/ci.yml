@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: v1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup target add wasm32-unknown-unknown
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install binaryen (wasm-opt) and Python deps
+        run: |
+          sudo apt-get update && sudo apt-get install -y binaryen
+          python -m pip install --upgrade pip
+          python -m pip install numpy onnx onnxruntime wasmtime
+
+      - name: rustfmt
+        run: cargo fmt --manifest-path crates/lnn/Cargo.toml --check
+
+      - name: clippy (correctness)
+        run: cargo clippy --manifest-path crates/lnn/Cargo.toml -- -D clippy::correctness
+
+      - name: Rust unit tests
+        run: make test-rust
+
+      - name: Build wasm (scalar / simd128 / relaxed)
+        run: make wasm
+
+      - name: Size report
+        run: make size
+
+      - name: Build JS
+        run: cd js && npm ci && npm run build
+
+      - name: Fixtures
+        run: make fixtures
+
+      - name: Conformance tests (wasm vs NumPy)
+        run: make test-python
+
+      - name: JS API tests
+        run: make test-js

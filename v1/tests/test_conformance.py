@@ -25,6 +25,17 @@ from lnn_convert import Reference, convert_model  # noqa: E402
 BUILDS = available_builds()
 
 
+def setUpModule():
+    # These suites run the real .wasm. Without a build (or without wasmtime)
+    # skip with instructions instead of erroring in every test.
+    if not BUILDS:
+        raise unittest.SkipTest("no wasm builds in dist/; run `make build` (scripts/build.sh) first")
+    try:
+        import wasmtime  # noqa: F401
+    except ImportError:
+        raise unittest.SkipTest("wasmtime is not installed; pip install wasmtime")
+
+
 def calib(shape, n=24, seed=0, scale=1.0):
     return np.random.default_rng(seed).normal(scale=scale, size=(n, *shape)).astype(np.float32)
 

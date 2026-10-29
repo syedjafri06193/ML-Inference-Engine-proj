@@ -47,7 +47,14 @@ impl ConvGeom {
 }
 
 /// Output extent: floor((in + pads − dilation·(k−1) − 1) / stride) + 1.
-pub fn out_extent(input: usize, pad_a: usize, pad_b: usize, k: usize, stride: usize, dil: usize) -> Option<usize> {
+pub fn out_extent(
+    input: usize,
+    pad_a: usize,
+    pad_b: usize,
+    k: usize,
+    stride: usize,
+    dil: usize,
+) -> Option<usize> {
     let span = dil.checked_mul(k.checked_sub(1)?)?.checked_add(1)?;
     let padded = input.checked_add(pad_a)?.checked_add(pad_b)?;
     if padded < span || stride == 0 {
@@ -178,7 +185,14 @@ pub unsafe fn depthwise(g: &ConvGeom, a: &ConvArgs, isa: Isa) {
                         acc += (xv - a.x_zero_point) * wv;
                     }
                 }
-                *out.add(ch) = requantize(acc, *a.mult.add(ch), *a.shift.add(ch), a.y_zero_point, a.lo, a.hi);
+                *out.add(ch) = requantize(
+                    acc,
+                    *a.mult.add(ch),
+                    *a.shift.add(ch),
+                    a.y_zero_point,
+                    a.lo,
+                    a.hi,
+                );
                 ch += 1;
             }
         }
@@ -187,7 +201,14 @@ pub unsafe fn depthwise(g: &ConvGeom, a: &ConvArgs, isa: Isa) {
 
 #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 #[inline(always)]
-unsafe fn depthwise16_simd(g: &ConvGeom, a: &ConvArgs, oy: usize, ox: usize, ch: usize, out: *mut i8) {
+unsafe fn depthwise16_simd(
+    g: &ConvGeom,
+    a: &ConvArgs,
+    oy: usize,
+    ox: usize,
+    ch: usize,
+    out: *mut i8,
+) {
     use core::arch::wasm32::*;
     let c = g.c;
     let zx = i16x8_splat(a.x_zero_point as i16);
@@ -226,7 +247,14 @@ unsafe fn depthwise16_simd(g: &ConvGeom, a: &ConvArgs, oy: usize, ox: usize, ch:
     v128_store(p.add(3), acc3);
     for i in 0..16 {
         let n = ch + i;
-        *out.add(n) = requantize(lanes[i], *a.mult.add(n), *a.shift.add(n), a.y_zero_point, a.lo, a.hi);
+        *out.add(n) = requantize(
+            lanes[i],
+            *a.mult.add(n),
+            *a.shift.add(n),
+            a.y_zero_point,
+            a.lo,
+            a.hi,
+        );
     }
 }
 

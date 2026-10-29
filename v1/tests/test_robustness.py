@@ -26,6 +26,17 @@ from lnn_convert import format as fmt  # noqa: E402
 BUILDS = available_builds()
 
 
+def setUpModule():
+    # These suites run the real .wasm. Without a build (or without wasmtime)
+    # skip with instructions instead of erroring in every test.
+    if not BUILDS:
+        raise unittest.SkipTest("no wasm builds in dist/; run `make build` (scripts/build.sh) first")
+    try:
+        import wasmtime  # noqa: F401
+    except ImportError:
+        raise unittest.SkipTest("wasmtime is not installed; pip install wasmtime")
+
+
 def a_model() -> bytes:
     m = models.conv_model(c=4, h=6, w=6, out=8, k=3, pad=1, act="relu")
     x = np.random.default_rng(0).normal(size=(16, 4, 6, 6)).astype(np.float32)
