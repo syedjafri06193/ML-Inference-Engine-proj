@@ -34,7 +34,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y binaryen
           python -m pip install --upgrade pip
-          python -m pip install numpy onnx onnxruntime wasmtime
+          python -m pip install numpy onnx onnxruntime wasmtime scikit-learn
 
       - name: rustfmt
         run: cargo fmt --manifest-path crates/lnn/Cargo.toml --check
